@@ -1,0 +1,27 @@
+# EasyCLIProxyAPI (CPA) Desktop & Channel Gateway Configuration Example
+# Bundled with AgentTeams Studio — Safe for GitHub distribution (no personal keys)
+
+locale = "zh-CN"
+port = 8317
+allow-lan = false
+host = "127.0.0.1"
+run-on-startup = false
+start-core-on-launch = true
+silent-start = false
+close-behavior = "ask"
+default-terminal = "auto"
+auth-dir = "./oauth"
+auth-dir-user-selected = false
+debug = false
+commercial-mode = false
+logging-to-file = false
+usage-statistics-enabled = true
+plugins-enabled = true
+routing-strategy = "fill-first"
+proxy-override = false
+request-retry = 3
+max-retry-credentials = 2
+max-retry-interval = 30
+window-width = 1280
+window-height = 800
+api-keys = [{ key = "sk-cliproxyapi-master-key", remark = "AgentTeams Studio Default Channel Key" }]

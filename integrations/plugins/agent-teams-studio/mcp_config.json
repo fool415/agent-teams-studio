@@ -1,0 +1,23 @@
+{
+  "mcpServers": {
+    "agent-teams-studio": {
+      "command": "node",
+      "args": [
+        "{{STUDIO_ROOT}}/server/studio-mcp-server.mjs"
+      ],
+      "env": {
+        "STUDIO_PORT": "4317",
+        "STUDIO_MIRROR_PORT": "4318"
+      }
+    },
+    "easycli-gpt": {
+      "command": "node",
+      "args": [
+        "{{STUDIO_ROOT}}/channels/cpa/cpa-mcp-server.mjs"
+      ],
+      "env": {
+        "CPA_BASE_URL": "http://127.0.0.1:8317/v1"
+      }
+    }
+  }
+}

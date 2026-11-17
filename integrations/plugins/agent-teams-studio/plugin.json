@@ -1,0 +1,15 @@
+{
+  "name": "agent-teams-studio",
+  "displayName": "AgentTeams Studio (@快捷模式)",
+  "version": "1.0.0",
+  "description": "AgentTeams Studio 快捷编排插件：在任何对话直接 @agent-teams-studio、@studio.md 或输入 /studio，即可自动唤醒 http://127.0.0.1:4317/ 可视化工作台并以 EasyCLIProxyAPI (gpt-6.1-sol) 生成待审批团队。",
+  "logo": "assets/logo.svg",
+  "author": {
+    "name": "AgentTeams Studio"
+  },
+  "suggestedPrompts": [
+    "@agent-teams-studio 用 @chatgpt-crew @gpt-6.1-sol 拆解并实现当前需求",
+    "/studio 查看所有团队实时进度并打开 http://127.0.0.1:4317/",
+    "@agent-teams-studio 用 @heterogeneous-cross-review 对当前项目做一次架构与安全审查"
+  ]
+}

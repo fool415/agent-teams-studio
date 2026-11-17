@@ -1,0 +1,47 @@
+{
+  "name": "agent-teams-studio",
+  "version": "2.0.0",
+  "license": "MIT",
+  "type": "module",
+  "description": "AgentTeams Studio — Apple Liquid Glass Multi-Agent DAG Workbench for Google Antigravity, OpenAI Codex, EasyCLIProxyAPI (CPA) & DSH AgentTeams",
+  "keywords": [
+    "agent-teams",
+    "antigravity",
+    "codex",
+    "easycliproxyapi",
+    "cpa",
+    "dsh",
+    "mcp",
+    "multi-agent",
+    "liquid-glass"
+  ],
+  "bin": {
+    "agent-teams-studio": "./bin/agent-teams-studio.mjs"
+  },
+  "scripts": {
+    "dev:server": "node ./bin/agent-teams-studio.mjs --port 4317",
+    "dev:client": "vite --port 5173",
+    "build": "vite build",
+    "build:desktop": "node scripts/build-desktop.mjs",
+    "setup": "node ./bin/agent-teams-studio.mjs install --target all",
+    "doctor": "node ./bin/agent-teams-studio.mjs doctor",
+    "cpa:start": "node ./bin/agent-teams-studio.mjs cpa-start",
+    "typecheck": "tsc --noEmit",
+    "start": "node ./bin/agent-teams-studio.mjs",
+    "test": "node --test tests/studio.test.mjs"
+  },
+  "dependencies": {
+    "@astryxdesign/core": "^0.7.16",
+    "@astryxdesign/theme-neutral": "^0.7.16",
+    "@stylexjs/stylex": "^0.19.2",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.0"
+  }
+}

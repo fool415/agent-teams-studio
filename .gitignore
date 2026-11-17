@@ -1,0 +1,22 @@
+# Dependencies & Build Cache
+node_modules/
+.vite/
+*.log
+
+# Runtime Workspace State & Usage Logs (Never leak local session data)
+.agent-teams/
+.agents/
+agent-usage/
+usage-records/
+
+# Private OAuth Credentials & Local Secrets (CRITICAL: Never commit OAuth tokens or personal keys)
+**/oauth/
+**/auths/
+.env
+.env.*
+channels/cpa/cpa-core/config.yaml
+channels/cpa/cpa-core/config.before-*.yaml
+channels/cpa/cpa-core/cli-proxy-api.exe
+
+# Portable Desktop Build Output (Generated via `npm run build:desktop`)
+dist-desktop/

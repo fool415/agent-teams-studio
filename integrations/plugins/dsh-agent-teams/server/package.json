@@ -1,0 +1,7 @@
+{
+  "name": "dsh-agent-teams-server",
+  "version": "0.1.27",
+  "private": true,
+  "type": "module",
+  "description": "DSH Agent Teams MCP Server (migrated to Antigravity)"
+}

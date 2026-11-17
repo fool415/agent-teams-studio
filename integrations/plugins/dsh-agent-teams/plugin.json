@@ -1,0 +1,15 @@
+{
+  "name": "dsh-agent-teams",
+  "displayName": "DSH 智能体团队 (Agent Teams)",
+  "version": "0.1.27",
+  "description": "从 DeepSeek Harness 完整迁入的多智能体团队编排插件：含 20 个团队管理与 P0 质量门 MCP 工具、3 套异构团队预设 (chatgpt-crew / heterogeneous-cross-review / ai-radar-squad)、6 个五维守则子智能体、PreToolUse 防死循环三道闸与右侧可视化团队看板。",
+  "logo": "assets/logo.svg",
+  "author": {
+    "name": "fool415 & nanmicoder"
+  },
+  "suggestedPrompts": [
+    "使用 /agent-teams 技能，按 chatgpt-crew 预设组建一支多智能体团队来完成当前任务",
+    "使用 /agent-teams 技能，按 heterogeneous-cross-review 预设创建含独立 GPT 审查官的研发团队",
+    "调用 agent_teams_status 查看当前及历史工作区的智能体团队状态"
+  ]
+}

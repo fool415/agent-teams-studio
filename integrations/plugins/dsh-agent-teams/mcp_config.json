@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "dsh-agent-teams": {
+      "command": "node",
+      "args": [
+        "{{PLUGIN_ROOT}}/server/mcp-server.mjs"
+      ],
+      "env": {}
+    }
+  }
+}
