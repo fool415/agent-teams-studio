@@ -1754,18 +1754,24 @@ export function createStudioServer({
         let currentBranch = 'main'
         let dirtyCount = 0
         const checkpoints = []
+        const gitSafePathspec = ['--', '.', ':!.agent-teams', ':!.agents', ':!agent-usage', ':!usage-records', ':!.env']
         if (gitReady) {
           try {
-            currentBranch = execFileSync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], {
-              cwd: absWorkspace,
-              encoding: 'utf8',
-              timeout: 3000,
-            }).trim()
+            currentBranch =
+              execFileSync('git', ['symbolic-ref', '--short', 'HEAD'], {
+                cwd: absWorkspace,
+                encoding: 'utf8',
+                stdio: ['ignore', 'pipe', 'ignore'],
+                windowsHide: true,
+                timeout: 3000,
+              }).trim() || 'main'
           } catch {}
           try {
-            const statusOut = execFileSync('git', ['status', '--porcelain'], {
+            const statusOut = execFileSync('git', ['status', '--porcelain', ...gitSafePathspec], {
               cwd: absWorkspace,
               encoding: 'utf8',
+              stdio: ['ignore', 'pipe', 'ignore'],
+              windowsHide: true,
               timeout: 4000,
             }).trim()
             dirtyCount = statusOut ? statusOut.split(/\r?\n/u).filter(Boolean).length : 0
@@ -1774,7 +1780,13 @@ export function createStudioServer({
             const logOut = execFileSync(
               'git',
               ['log', '-n', '15', '--pretty=format:%H|%h|%s|%an|%cI'],
-              { cwd: absWorkspace, encoding: 'utf8', timeout: 4000 },
+              {
+                cwd: absWorkspace,
+                encoding: 'utf8',
+                stdio: ['ignore', 'pipe', 'ignore'],
+                windowsHide: true,
+                timeout: 4000,
+              },
             ).trim()
             if (logOut) {
               for (const line of logOut.split(/\r?\n/u)) {
@@ -1800,24 +1812,39 @@ export function createStudioServer({
         const message =
           String(body?.message || '').trim() ||
           `chore(checkpoint): studio snapshot ${new Date().toISOString().replace('T', ' ').slice(0, 19)}`
+        const gitSafePathspec = ['--', '.', ':!.agent-teams', ':!.agents', ':!agent-usage', ':!usage-records', ':!.env']
         try {
-          execFileSync('git', ['add', '-A'], { cwd: absWorkspace, timeout: 10000 })
-          const statusOut = execFileSync('git', ['status', '--porcelain'], {
+          execFileSync('git', ['add', '-A', ...gitSafePathspec], {
+            cwd: absWorkspace,
+            stdio: ['ignore', 'pipe', 'ignore'],
+            windowsHide: true,
+            timeout: 10000,
+          })
+          const stagedDiff = execFileSync('git', ['diff', '--cached', '--name-only'], {
             cwd: absWorkspace,
             encoding: 'utf8',
+            stdio: ['ignore', 'pipe', 'ignore'],
+            windowsHide: true,
             timeout: 4000,
           }).trim()
-          if (!statusOut) {
+          if (!stagedDiff) {
             return sendJson(res, 200, {
               ok: true,
               noChanges: true,
               message: '当前工作区已是最新状态，无需重复提交 Git 快照。',
             })
           }
-          execFileSync('git', ['commit', '-m', message], { cwd: absWorkspace, timeout: 15000 })
+          execFileSync('git', ['commit', '-m', message], {
+            cwd: absWorkspace,
+            stdio: ['ignore', 'pipe', 'ignore'],
+            windowsHide: true,
+            timeout: 15000,
+          })
           const shortHash = execFileSync('git', ['rev-parse', '--short', 'HEAD'], {
             cwd: absWorkspace,
             encoding: 'utf8',
+            stdio: ['ignore', 'pipe', 'ignore'],
+            windowsHide: true,
             timeout: 3000,
           }).trim()
           return sendJson(res, 200, {

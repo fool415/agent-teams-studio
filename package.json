@@ -1,6 +1,6 @@
 {
   "name": "agent-teams-studio",
-  "version": "2.0.0",
+  "version": "2.3.0",
   "license": "MIT",
   "type": "module",
   "description": "AgentTeams Studio — Apple Liquid Glass Multi-Agent DAG Workbench for Google Antigravity, OpenAI Codex, EasyCLIProxyAPI (CPA) & DSH AgentTeams",
@@ -28,7 +28,7 @@
     "cpa:start": "node ./bin/agent-teams-studio.mjs cpa-start",
     "typecheck": "tsc --noEmit",
     "start": "node ./bin/agent-teams-studio.mjs",
-    "test": "node --test tests/studio.test.mjs"
+    "test": "node --test tests/studio.test.mjs tests/qqbot.test.mjs tests/e2e-full-platform.test.mjs"
   },
   "dependencies": {
     "@astryxdesign/core": "^0.7.16",
