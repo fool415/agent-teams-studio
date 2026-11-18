@@ -627,6 +627,9 @@ function readStoreData(workspaceRoot = process.cwd()) {
         openaiCompatibleApiKey: String(parsed?.localMediaConfig?.openaiCompatibleApiKey || ''),
       },
       generatedGallery: Array.isArray(parsed?.generatedGallery) ? parsed.generatedGallery.slice(0, 30) : [],
+      hiddenPipelineIds: Array.isArray(parsed?.hiddenPipelineIds)
+        ? parsed.hiddenPipelineIds.map((x) => String(x)).filter(Boolean)
+        : [],
     }
   } catch {
     return {
@@ -641,6 +644,7 @@ function readStoreData(workspaceRoot = process.cwd()) {
         openaiCompatibleApiKey: '',
       },
       generatedGallery: [],
+      hiddenPipelineIds: [],
     }
   }
 }
@@ -661,9 +665,12 @@ function writeStoreData(workspaceRoot = process.cwd(), data = {}) {
 
 export function listVideoPipelines(workspaceRoot = process.cwd()) {
   const store = readStoreData(workspaceRoot)
+  const hiddenSet = new Set(store.hiddenPipelineIds || [])
+  const visibleBuiltins = BUILTIN_VIDEO_PIPELINES.filter((p) => !hiddenSet.has(p.id))
   return {
-    pipelines: [...BUILTIN_VIDEO_PIPELINES, ...store.pipelines],
+    pipelines: [...visibleBuiltins, ...store.pipelines],
     customPipelines: store.pipelines,
+    hiddenPipelineIds: store.hiddenPipelineIds || [],
     localMediaConfig: store.localMediaConfig,
     localModelsGuide: LOCAL_MEDIA_MODELS_GUIDE,
     generatedGallery: store.generatedGallery,
@@ -902,8 +909,38 @@ export function saveCustomVideoPipeline(workspaceRoot = process.cwd(), input = {
 export function deleteCustomVideoPipeline(workspaceRoot = process.cwd(), id = '') {
   const store = readStoreData(workspaceRoot)
   const nextCustom = store.pipelines.filter((p) => p.id !== id)
-  if (nextCustom.length === store.pipelines.length) return false
-  store.pipelines = nextCustom
+  if (nextCustom.length !== store.pipelines.length) {
+    store.pipelines = nextCustom
+    writeStoreData(workspaceRoot, store)
+    return true
+  }
+  if (BUILTIN_VIDEO_PIPELINES.some((p) => p.id === id)) {
+    const hidden = new Set(store.hiddenPipelineIds || [])
+    hidden.add(id)
+    store.hiddenPipelineIds = [...hidden]
+    writeStoreData(workspaceRoot, store)
+    return true
+  }
+  return false
+}
+
+export function restoreBuiltinVideoPipelines(workspaceRoot = process.cwd()) {
+  const store = readStoreData(workspaceRoot)
+  store.hiddenPipelineIds = []
+  writeStoreData(workspaceRoot, store)
+  return listVideoPipelines(workspaceRoot)
+}
+
+export function deleteGeneratedGraphic(workspaceRoot = process.cwd(), id = '') {
+  const store = readStoreData(workspaceRoot)
+  if (id === 'all') {
+    store.generatedGallery = []
+    writeStoreData(workspaceRoot, store)
+    return true
+  }
+  const nextGallery = (store.generatedGallery || []).filter((g) => g.id !== id)
+  if (nextGallery.length === (store.generatedGallery || []).length) return false
+  store.generatedGallery = nextGallery
   writeStoreData(workspaceRoot, store)
   return true
 }

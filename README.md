@@ -30,7 +30,13 @@
 - **系统底部常驻 `AgentSpeed` 速率条与悬浮仪表盘**：实时显示当前推理速度 (`tok/s`)、活跃生成/工具数、`1分 / 2分 / 5分` 实时曲线、今日均速 (`69 tok/s`)、峰值 (`252 tok/s`)、输出/输入(含缓存) Token 与 API 等值费用 (`≥US$`)；
 - **深度集成 B站 UP主 oil欧呦 `BV1rPWd6nEpP`《如何用 AI 长期开发一个复杂项目》方法论**：内置 `bv1rpwd6nepp-long-horizon` 知识库与底栏 **「💾 Git 保存版本」** 按钮，每次更新一键创建 Git 快照并支持复制回退命令。
 
-### 5. 📊 独立 CPA 模型消耗与团队遥测中心 (`CpaUsageView`)
+### 5. 🤖 全景模型与供应商中心 (`ModelCatalogView` · 支持中转站一键拉取)
+- 独立一级导航 **「🤖 模型与供应商」**，一眼看清当前默认路由、活跃团队成员正在使用的模型以及 **20+ 内置供应商与中转站**：
+  - **五大 Agent 宿主生态**：`Google Antigravity (反重力)`、`OpenAI Codex`、`DSH`、`ZCode`、`OpenCode (Zen 终端路由)`；
+  - **主流中转站与聚合网关**：`EasyCLIProxyAPI (CPA)`、`NewAPI / OneAPI / VoAPI`、`OpenRouter`、`AiHubMix`、`硅基流动 SiliconFlow` 及任意自定义中转站；
+  - 支持填入中转站 `Base URL` 与 `API Key` 后 **「🔄 一键从 `/models` 自动拉取全站模型」**、单模型 **「⚡ 测速连通 (Ping)」**、一键设为默认或建队，并支持任意供应商与单模型的自由增删与一键恢复。
+
+### 6. 📊 独立 CPA 模型消耗与团队遥测中心 (`CpaUsageView`)
 - 作为独立一级功能模块，同时直连本机 EasyCLIProxyAPI `usage-records/usage.db` 与 Studio 团队级计量账本：
   - 精确追踪 **每个团队 (`teamName`)、每个成员 (`member`)、每个任务 (`task`)** 的 Input / Output / Reasoning / Cached / Total Tokens、缓存命中率与响应延迟；
   - 支持 `24h / 7d / 30d / 全部` 时间范围切换、全渠道模型消耗排行榜与实时请求事件流水表。

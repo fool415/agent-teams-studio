@@ -1314,6 +1314,94 @@ test('Graphic Generation Studio, Local Media Models Guide, AI News Radar 3-Tier 
   }
 })
 
+test('Model & Provider Hub (DSH, ZCode, Codex, Antigravity, OpenCode, NewAPI relays) + Full Add/Delete/Restore across all extensible modules', async () => {
+  const workDir = mkdtempSync(join(tmpdir(), 'at-studio-models-hub-'))
+  const srv = await startTempServer({
+    workspaceRoot: workDir,
+    mockExecutor: async () => ({ content: 'OK' }),
+  })
+  try {
+    // 1. Verify built-in providers include Antigravity, Codex, DSH, ZCode, OpenCode, NewAPI, OpenRouter
+    const modelsRes = await apiJson(`${srv.baseUrl}/api/models`)
+    assert.equal(modelsRes.status, 200)
+    const ids = modelsRes.body.providers.map((p) => p.id)
+    for (const p of ['antigravity', 'codex', 'dsh', 'zcode', 'opencode', 'cliproxyapi', 'newapi', 'openrouter', 'aihubmix', 'siliconflow', 'minimax']) {
+      assert.ok(ids.includes(p), `Provider ${p} must be present in /api/models`)
+    }
+
+    // 2. Add a custom OpenCode/NewAPI relay station with masked secret
+    const addRelay = await apiJson(`${srv.baseUrl}/api/models/providers`, {
+      method: 'POST',
+      body: JSON.stringify({
+        id: 'my-opencode-relay',
+        name: 'My OpenCode Relay Station',
+        category: 'relay-station',
+        baseUrl: 'https://relay.example.com/v1',
+        apiKey: 'sk-test-relay-secret-9876',
+        models: [
+          { id: 'claude-sonnet-4-6-relay', name: 'Claude 4.6 Relay' },
+          { id: 'gpt-6.1-relay', name: 'GPT 6.1 Relay' },
+        ],
+      }),
+    })
+    assert.equal(addRelay.status, 200)
+    assert.equal(addRelay.body.provider.id, 'relay-my-opencode-relay')
+    assert.equal(addRelay.body.provider.hasApiKey, true)
+    assert.match(addRelay.body.provider.apiKeyMasked, /9876$/)
+    assert.equal(addRelay.body.provider.apiKey, undefined)
+
+    // 3. Ping model endpoint & delete single model & delete/hide provider + restore
+    const pingRes = await apiJson(`${srv.baseUrl}/api/models/test`, {
+      method: 'POST',
+      body: JSON.stringify({ provider: 'zcode', model: 'glm-4.5' }),
+    })
+    assert.equal(pingRes.status, 200)
+    assert.equal(pingRes.body.reachable, true)
+
+    const delSingleMod = await apiJson(
+      `${srv.baseUrl}/api/models/providers/relay-my-opencode-relay/models/gpt-6.1-relay`,
+      { method: 'DELETE' },
+    )
+    assert.equal(delSingleMod.status, 200)
+
+    const hideBuiltinProv = await apiJson(`${srv.baseUrl}/api/models/providers/minimax`, { method: 'DELETE' })
+    assert.equal(hideBuiltinProv.status, 200)
+    const afterHideModels = await apiJson(`${srv.baseUrl}/api/models`)
+    assert.ok(!afterHideModels.body.providers.some((p) => p.id === 'minimax'))
+    assert.equal(afterHideModels.body.hiddenProvidersCount, 1)
+
+    await apiJson(`${srv.baseUrl}/api/models/providers/restore`, { method: 'POST' })
+    const afterRestoreModels = await apiJson(`${srv.baseUrl}/api/models`)
+    assert.ok(afterRestoreModels.body.providers.some((p) => p.id === 'minimax'))
+
+    // 4. Verify Delete + Restore across Knowledge Manuals, Video Pipelines & AI Radar
+    const delBuiltinKb = await apiJson(`${srv.baseUrl}/api/knowledge/vps-zkl-novixlink`, { method: 'DELETE' })
+    assert.equal(delBuiltinKb.status, 200)
+    const kbAfterDel = await apiJson(`${srv.baseUrl}/api/knowledge`)
+    assert.ok(!kbAfterDel.body.manuals.some((m) => m.id === 'vps-zkl-novixlink'))
+    assert.equal(kbAfterDel.body.hiddenManualCount, 1)
+    await apiJson(`${srv.baseUrl}/api/knowledge/restore`, { method: 'POST' })
+    const kbAfterRestore = await apiJson(`${srv.baseUrl}/api/knowledge`)
+    assert.ok(kbAfterRestore.body.manuals.some((m) => m.id === 'vps-zkl-novixlink'))
+
+    const delBuiltinPipe = await apiJson(`${srv.baseUrl}/api/video/pipelines/shortgpt-story-video`, {
+      method: 'DELETE',
+    })
+    assert.equal(delBuiltinPipe.status, 200)
+    await apiJson(`${srv.baseUrl}/api/video/pipelines/restore`, { method: 'POST' })
+
+    const delBuiltinRadar = await apiJson(`${srv.baseUrl}/api/radar/items/radar-gpt-image-26-anchor`, {
+      method: 'DELETE',
+    })
+    assert.equal(delBuiltinRadar.status, 200)
+    await apiJson(`${srv.baseUrl}/api/radar/restore`, { method: 'POST' })
+  } finally {
+    await srv.close()
+    rmSync(workDir, { recursive: true, force: true })
+  }
+})
+
+
 
 
 

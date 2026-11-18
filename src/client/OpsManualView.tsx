@@ -145,6 +145,26 @@ export function OpsManualView({ onQuickDispatchOps }: OpsManualViewProps) {
   // Extensible Custom Knowledge Manual Creator State
   const [editorOpen, setEditorOpen] = useState(false)
   const [savingManual, setSavingManual] = useState(false)
+  const [hiddenManualCount, setHiddenManualCount] = useState(0)
+  const [widgetsList, setWidgetsList] = useState<
+    readonly {
+      id: string
+      title: string
+      category?: string
+      icon?: string
+      description?: string
+      actionType?: 'quick-command' | 'link' | 'note'
+      payload?: string
+    }[]
+  >([])
+  const [widgetEditorOpen, setWidgetEditorOpen] = useState(false)
+  const [widgetDraft, setWidgetDraft] = useState({
+    title: '',
+    icon: '🧩',
+    description: '',
+    actionType: 'quick-command' as 'quick-command' | 'link' | 'note',
+    payload: '@studio-default 执行自定义自动化检查',
+  })
   const [manualDraft, setManualDraft] = useState({
     id: '',
     title: '',
@@ -165,10 +185,29 @@ export function OpsManualView({ onQuickDispatchOps }: OpsManualViewProps) {
     try {
       const res = await fetch('/api/knowledge', { cache: 'no-store' })
       if (!res.ok) return
-      const data = (await res.json()) as { manuals?: readonly ManualSummaryItem[] }
+      const data = (await res.json()) as {
+        manuals?: readonly ManualSummaryItem[]
+        widgets?: readonly {
+          id: string
+          title: string
+          category?: string
+          icon?: string
+          description?: string
+          actionType?: 'quick-command' | 'link' | 'note'
+          payload?: string
+        }[]
+        hiddenManualCount?: number
+      }
       const list = data.manuals ?? []
       setManualsList(list)
-      const targetId = preferredId || selectedManualId || list[0]?.id || 'vps-zkl-novixlink'
+      setWidgetsList(data.widgets ?? [])
+      setHiddenManualCount(Number(data.hiddenManualCount ?? 0))
+      if (list.length === 0) {
+        setManual(null)
+        return
+      }
+      const candidateId = preferredId || selectedManualId
+      const targetId = list.some((m) => m.id === candidateId) ? candidateId : list[0].id
       const detailRes = await fetch(`/api/knowledge/${encodeURIComponent(targetId)}`, { cache: 'no-store' })
       if (detailRes.ok) {
         const detailData = (await detailRes.json()) as { manual?: OpsManualData }
@@ -276,12 +315,62 @@ export function OpsManualView({ onQuickDispatchOps }: OpsManualViewProps) {
   }, [manualDraft, loadManualsCatalog])
 
   const handleDeleteCustomManual = useCallback(
-    async (id: string) => {
+    async (id: string, isCustom?: boolean) => {
       try {
         const res = await fetch(`/api/knowledge/${encodeURIComponent(id)}`, { method: 'DELETE' })
         if (res.ok) {
-          setNotice('🗑️ 已删除该自定义知识库')
-          await loadManualsCatalog('vps-zkl-novixlink')
+          setNotice(
+            isCustom
+              ? '🗑️ 已彻底删除该自定义知识库模块'
+              : '🙈 已移除该内置手册（随时可点击「恢复已移除内置手册」找回）',
+          )
+          await loadManualsCatalog('')
+        }
+      } catch {}
+    },
+    [loadManualsCatalog],
+  )
+
+  const handleRestoreManuals = useCallback(async () => {
+    try {
+      const res = await fetch('/api/knowledge/restore', { method: 'POST' })
+      if (res.ok) {
+        setNotice('🔄 已恢复全部内置知识库手册！')
+        await loadManualsCatalog('bv1rpwd6nepp-long-horizon')
+      }
+    } catch {}
+  }, [loadManualsCatalog])
+
+  const handleSaveWidget = useCallback(async () => {
+    if (!widgetDraft.title.trim()) return
+    try {
+      const res = await fetch('/api/extensions/widgets', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(widgetDraft),
+      })
+      if (res.ok) {
+        setWidgetDraft({
+          title: '',
+          icon: '🧩',
+          description: '',
+          actionType: 'quick-command',
+          payload: '@studio-default 执行自定义自动化检查',
+        })
+        setWidgetEditorOpen(false)
+        setNotice('✅ 已新增自定义扩展功能模块！')
+        await loadManualsCatalog()
+      }
+    } catch {}
+  }, [widgetDraft, loadManualsCatalog])
+
+  const handleDeleteWidget = useCallback(
+    async (id: string) => {
+      try {
+        const res = await fetch(`/api/extensions/widgets/${encodeURIComponent(id)}`, { method: 'DELETE' })
+        if (res.ok) {
+          setNotice('🗑️ 已删除该自定义扩展功能模块')
+          await loadManualsCatalog()
         }
       } catch {}
     },
@@ -373,36 +462,68 @@ export function OpsManualView({ onQuickDispatchOps }: OpsManualViewProps) {
               </div>
             </div>
 
-            <button
-              type="button"
-              className="studio-btn studio-btn-primary"
-              onClick={() => {
-                setManualDraft((prev) => ({ ...prev, id: '', title: '', subtitle: '' }))
-                setEditorOpen((prev) => !prev)
-              }}
-            >
-              {editorOpen ? '✕ 收起编辑器' : '➕ 新增自定义知识库 / SOP 模块'}
-            </button>
+            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              {hiddenManualCount > 0 && (
+                <button
+                  type="button"
+                  className="studio-btn"
+                  onClick={() => { void handleRestoreManuals() }}
+                >
+                  🔄 恢复已移除内置手册 ({hiddenManualCount})
+                </button>
+              )}
+              <button
+                type="button"
+                className="studio-btn studio-btn-primary"
+                onClick={() => {
+                  setManualDraft((prev) => ({ ...prev, id: '', title: '', subtitle: '' }))
+                  setEditorOpen((prev) => !prev)
+                }}
+              >
+                {editorOpen ? '✕ 收起编辑器' : '➕ 新增自定义知识库 / SOP 模块'}
+              </button>
+            </div>
           </div>
 
-          {/* Extensible Manual Selector Pills */}
+          {/* Extensible Manual Selector Pills with Direct Delete Button */}
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: 10, alignItems: 'center' }}>
             {manualsList.map((item) => {
               const active = item.id === selectedManualId
               return (
-                <button
+                <div
                   key={item.id}
-                  type="button"
-                  className={`studio-btn ${active ? 'studio-btn-primary' : ''}`}
-                  style={{ padding: '8px 16px', fontSize: 13.5 }}
-                  onClick={() => { void selectManual(item.id) }}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: 4,
+                    padding: '3px 6px 3px 3px',
+                    borderRadius: 999,
+                    background: 'var(--at-canvas-card)',
+                    border: active ? '1.5px solid var(--at-accent-primary)' : '1px solid var(--at-border-hairline)',
+                  }}
                 >
-                  <span>{item.isCustom ? '📘' : '📡'}</span>
-                  <span>{item.title}</span>
-                  {item.version && (
-                    <span style={{ opacity: 0.85, fontSize: 12 }}>({item.version})</span>
-                  )}
-                </button>
+                  <button
+                    type="button"
+                    className={`studio-btn ${active ? 'studio-btn-primary' : ''}`}
+                    style={{ padding: '6px 14px', fontSize: 13.5, border: 0 }}
+                    onClick={() => { void selectManual(item.id) }}
+                  >
+                    <span>{item.isCustom ? '📘' : '📡'}</span>
+                    <span>{item.title}</span>
+                    {item.version && (
+                      <span style={{ opacity: 0.85, fontSize: 12 }}>({item.version})</span>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    className="studio-btn"
+                    style={{ padding: '4px 8px', minHeight: 28, fontSize: 12, border: 0, color: '#ef4444' }}
+                    title={item.isCustom ? '删除该自定义知识库' : '移除/隐藏该内置知识库'}
+                    onClick={() => { void handleDeleteCustomManual(item.id, item.isCustom) }}
+                  >
+                    🗑️
+                  </button>
+                </div>
               )
             })}
           </div>
@@ -608,15 +729,14 @@ export function OpsManualView({ onQuickDispatchOps }: OpsManualViewProps) {
                   </button>
                 </div>
 
-                {manual.isCustom && (
-                  <button
-                    type="button"
-                    className="studio-btn"
-                    onClick={() => { void handleDeleteCustomManual(manual.id) }}
-                  >
-                    🗑️ 删除此知识库
-                  </button>
-                )}
+                <button
+                  type="button"
+                  className="studio-btn"
+                  style={{ color: '#ef4444' }}
+                  onClick={() => { void handleDeleteCustomManual(manual.id, manual.isCustom) }}
+                >
+                  🗑️ {manual.isCustom ? '删除此知识库' : '移除此内置手册'}
+                </button>
               </div>
             </div>
 
@@ -875,6 +995,114 @@ export function OpsManualView({ onQuickDispatchOps }: OpsManualViewProps) {
             )}
           </section>
         )}
+
+        {/* Custom Extension Feature Widgets Manager (Add + Execute + Delete) */}
+        <section className="at-glass-card" style={{ padding: '22px 24px', display: 'grid', gap: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12 }}>
+            <div>
+              <h3 style={{ margin: 0, fontSize: 19, fontWeight: 800 }}>
+                ⚡ 自定义扩展功能模块管理 ({widgetsList.length})
+              </h3>
+              <div style={{ fontSize: 13.5, color: 'var(--dsw-alias-label-secondary)', marginTop: 3 }}>
+                在此自由新增或删除自己的快捷指令模块、外部工具链接或备忘卡片，同时在「跨端审批 &amp; Worktree」页面同步展示。
+              </div>
+            </div>
+            <button
+              type="button"
+              className="studio-btn studio-btn-primary"
+              onClick={() => setWidgetEditorOpen((v) => !v)}
+            >
+              {widgetEditorOpen ? '✕ 收起' : '➕ 新增扩展功能模块'}
+            </button>
+          </div>
+
+          {widgetEditorOpen && (
+            <div
+              className="at-ecosystem-card"
+              style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}
+            >
+              <div>
+                <label style={{ fontSize: 12.5, fontWeight: 700, display: 'block', marginBottom: 4 }}>模块标题 *</label>
+                <input
+                  className="studio-quick-input"
+                  value={widgetDraft.title}
+                  onChange={(e) => setWidgetDraft({ ...widgetDraft, title: e.target.value })}
+                  placeholder="例如：一键安全红队扫描"
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: 12.5, fontWeight: 700, display: 'block', marginBottom: 4 }}>动作类型</label>
+                <select
+                  className="studio-quick-input"
+                  value={widgetDraft.actionType}
+                  onChange={(e) =>
+                    setWidgetDraft({
+                      ...widgetDraft,
+                      actionType: e.target.value as 'quick-command' | 'link' | 'note',
+                    })
+                  }
+                >
+                  <option value="quick-command">⚡ 触发 @快捷模式 团队指令</option>
+                  <option value="link">🔗 打开外部工具/监控链接</option>
+                  <option value="note">📌 纯信息备忘卡片</option>
+                </select>
+              </div>
+              <div style={{ gridColumn: '1 / -1', display: 'flex', gap: 10 }}>
+                <input
+                  className="studio-quick-input"
+                  style={{ flex: 1 }}
+                  value={widgetDraft.payload}
+                  onChange={(e) => setWidgetDraft({ ...widgetDraft, payload: e.target.value })}
+                  placeholder="输入 @指令 或 https://链接 或备忘说明..."
+                />
+                <button type="button" className="studio-btn studio-btn-primary" onClick={() => void handleSaveWidget()}>
+                  💾 保存模块
+                </button>
+              </div>
+            </div>
+          )}
+
+          {widgetsList.length === 0 ? (
+            <div style={{ fontSize: 13.5, color: 'var(--dsw-alias-label-secondary)' }}>
+              当前暂无自定义扩展功能模块，点击右上方「➕ 新增扩展功能模块」即可添加，并随时支持一键删除。
+            </div>
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 12 }}>
+              {widgetsList.map((w) => (
+                <div key={w.id} className="at-ecosystem-card" style={{ gap: 8 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                    <strong style={{ fontSize: 15 }}>
+                      {w.icon || '🧩'} {w.title}
+                    </strong>
+                    <button
+                      type="button"
+                      className="studio-btn"
+                      style={{ padding: '4px 10px', minHeight: 28, fontSize: 12, color: '#ef4444' }}
+                      onClick={() => void handleDeleteWidget(w.id)}
+                    >
+                      🗑️ 删除
+                    </button>
+                  </div>
+                  {w.payload && (
+                    <code style={{ fontSize: 12, color: 'var(--dsw-alias-label-secondary)', wordBreak: 'break-all' }}>
+                      {w.payload}
+                    </code>
+                  )}
+                  {w.actionType === 'quick-command' && w.payload && (
+                    <button
+                      type="button"
+                      className="studio-btn"
+                      style={{ alignSelf: 'flex-start', fontSize: 12.5 }}
+                      onClick={() => void handleDispatchSop(w.id, w.payload!)}
+                    >
+                      🚀 立即派发执行
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </section>
       </div>
     </div>
   )

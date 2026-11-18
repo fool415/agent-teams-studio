@@ -508,7 +508,10 @@ export function CreateTeamWizard({
   onTeamCreated,
   maxMembers = 8,
 }: CreateTeamWizardProps) {
-  const [catalogs, setCatalogs] = useState<Record<string, { id: string }[]>>({})
+  const [catalogs, setCatalogs] = useState<Record<string, { id: string; name?: string }[]>>({})
+  const [runtimeProviders, setRuntimeProviders] = useState<
+    readonly { id: string; name: string; icon?: string; models: { id: string; name?: string }[] }[]
+  >([])
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1)
   const [teamName, setTeamName] = useState('')
   const [goal, setGoal] = useState('')
@@ -528,10 +531,22 @@ export function CreateTeamWizard({
   useEffect(() => {
     if (!open) return
     let current = true
+    void fetch('/api/models', { cache: 'no-store' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!current || !data?.providers) return
+        setRuntimeProviders(data.providers)
+        const nextMap: Record<string, { id: string; name?: string }[]> = {}
+        for (const p of data.providers) {
+          nextMap[p.id] = p.models ?? []
+        }
+        setCatalogs((prev) => ({ ...prev, ...nextMap }))
+      })
+      .catch(() => {})
     for (const provider of new Set(members.map(member => member.provider))) {
       void teamRequest(`/plugins/dsh-agent-teams/teams/catalog?provider=${encodeURIComponent(provider)}`).then(data => {
         if (current) setCatalogs(previous => ({ ...previous, [provider]: data.models }))
-      }).catch(() => { if (current) setCatalogs(previous => ({ ...previous, [provider]: [] })) })
+      }).catch(() => {})
     }
     return () => { current = false }
   }, [open, members.map(member => member.provider).join(',')])
@@ -927,27 +942,47 @@ export function CreateTeamWizard({
 
                         <div className={css.memberRow}>
                           <div className={css.formGroup}>
-                            <label className={css.formLabel}>模型供应商</label>
+                            <label className={css.formLabel}>模型供应商 / 中转站</label>
                             <select
                               className={css.formSelect}
                               value={mem.provider}
                               onChange={(e) => {
                                 const newP = e.target.value
+                                const provEntry = runtimeProviders.find((p) => p.id === newP)
                                 const firstM =
-                                  newP === 'cliproxyapi'
+                                  provEntry?.models?.[0]?.id ||
+                                  (newP === 'cliproxyapi'
                                     ? 'gpt-6.1-sol'
                                     : newP === 'antigravity'
                                       ? 'gemini-3.8-flash-tiered'
-                                      : newP === 'anthropic'
-                                        ? 'claude-3-7-sonnet-latest'
-                                        : 'gpt-6.1-sol'
+                                      : newP === 'zcode'
+                                        ? 'glm-4.5'
+                                        : newP === 'opencode'
+                                          ? 'claude-sonnet-4-6'
+                                          : 'gpt-6.1-sol')
                                 updateMember(mem.id, { provider: newP, model: firstM })
                               }}
                             >
-                              <option value="cliproxyapi">EasyCLIProxyAPI (CPA · GPT-6.1-Sol / Claude)</option>
-                              <option value="antigravity">Google Antigravity (反重力 · 哈吉米全量模型)</option>
-                              <option value="codex">OpenAI Codex</option>
-                              <option value="anthropic">Anthropic Official</option>
+                              {runtimeProviders.length > 0 ? (
+                                runtimeProviders.map((prov) => (
+                                  <option key={prov.id} value={prov.id}>
+                                    {prov.icon ? `${prov.icon} ` : ''}
+                                    {prov.name} ({prov.models?.length ?? 0})
+                                  </option>
+                                ))
+                              ) : (
+                                <>
+                                  <option value="cliproxyapi">🔀 EasyCLIProxyAPI (CPA 统一渠道)</option>
+                                  <option value="antigravity">🪐 Google Antigravity (反重力 · 哈吉米)</option>
+                                  <option value="codex">💻 OpenAI Codex</option>
+                                  <option value="dsh">🐉 DSH AgentTeams</option>
+                                  <option value="zcode">⚡ ZCode (智谱编码代理)</option>
+                                  <option value="opencode">🧩 OpenCode (Zen 终端路由)</option>
+                                  <option value="newapi">🏮 NewAPI / OneAPI 中转站</option>
+                                  <option value="openrouter">🌐 OpenRouter 中转</option>
+                                  <option value="anthropic">🎭 Anthropic Official</option>
+                                </>
+                              )}
                             </select>
                           </div>
 

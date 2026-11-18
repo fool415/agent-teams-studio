@@ -139,6 +139,15 @@ export function clearGrokBotHistory(workspaceRoot = process.cwd()) {
   return { ok: true, history: [] }
 }
 
+export function deleteGrokHistoryItem(workspaceRoot = process.cwd(), id = '') {
+  const store = readGrokStore(workspaceRoot)
+  const next = (store.history || []).filter((h) => h.id !== id)
+  if (next.length === (store.history || []).length) return false
+  store.history = next
+  writeGrokStore(workspaceRoot, store)
+  return true
+}
+
 function buildGrokSystemPrompt(mode = 'fact-check', witLevel = 85) {
   const baseIdentity = `你是 AgentTeams Studio 内置的 **@Grok Bot (xAI Grok & grok-build 融合智能体)**。
 你兼具 Elon Musk 旗下 xAI Grok 的两大灵魂：

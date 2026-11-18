@@ -70,7 +70,7 @@ function normalizeWidget(value) {
 export function listCustomExtensions(workspaceRoot = process.cwd()) {
   const target = filePath(workspaceRoot)
   if (!existsSync(target)) {
-    return { manuals: [], widgets: [] }
+    return { manuals: [], widgets: [], hiddenManualIds: [] }
   }
   try {
     const source = readFileSync(target, 'utf8')
@@ -78,9 +78,10 @@ export function listCustomExtensions(workspaceRoot = process.cwd()) {
     return {
       manuals: records(data.manuals).map(normalizeManual),
       widgets: records(data.widgets).map(normalizeWidget),
+      hiddenManualIds: strings(data.hiddenManualIds),
     }
   } catch {
-    return { manuals: [], widgets: [] }
+    return { manuals: [], widgets: [], hiddenManualIds: [] }
   }
 }
 
@@ -111,6 +112,9 @@ function save(root, key, value, normalize) {
   })
   if (index < 0) data[key].push(saved)
   else data[key][index] = saved
+  if (key === 'manuals' && Array.isArray(data.hiddenManualIds)) {
+    data.hiddenManualIds = data.hiddenManualIds.filter((hid) => hid !== id)
+  }
   persist(root, data)
   return saved
 }
@@ -118,10 +122,27 @@ function save(root, key, value, normalize) {
 function remove(root, key, id) {
   const data = listCustomExtensions(root)
   const index = data[key].findIndex((item) => item.id === id)
-  if (index < 0) return false
-  data[key].splice(index, 1)
+  if (index >= 0) {
+    data[key].splice(index, 1)
+    persist(root, data)
+    return true
+  }
+  if (key === 'manuals' && ['vps-zkl-novixlink', 'bv1rpwd6nepp-long-horizon', 'bv1rpwd6nepp-long-horizon-dev'].includes(id)) {
+    const canonical = id === 'bv1rpwd6nepp-long-horizon-dev' ? 'bv1rpwd6nepp-long-horizon' : id
+    if (!data.hiddenManualIds.includes(canonical)) {
+      data.hiddenManualIds.push(canonical)
+      persist(root, data)
+    }
+    return true
+  }
+  return false
+}
+
+export function restoreHiddenManuals(root = process.cwd()) {
+  const data = listCustomExtensions(root)
+  data.hiddenManualIds = []
   persist(root, data)
-  return true
+  return data
 }
 
 export const saveCustomManual = (root, input) => save(root, 'manuals', input, normalizeManual)

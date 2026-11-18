@@ -129,6 +129,70 @@ export const CHANNEL_CATALOG = [
         notes: 'xAI Grok-3 / Grok-3-Mini / xai-org/grok-build agent harness and real-time fact-checking bot.',
     },
     {
+        id: 'zcode',
+        label: 'ZCode (ZCode IDE / 智谱编码代理生态)',
+        costTier: 'budget',
+        peakHoursUTC8: [],
+        quota: 'known',
+        notes: 'ZCode coding agent ecosystem & zai-coding-cn compatible endpoint.',
+    },
+    {
+        id: 'opencode',
+        label: 'OpenCode (OpenCode Zen / 开源终端 Agent 路由)',
+        costTier: 'standard',
+        peakHoursUTC8: [],
+        quota: 'known',
+        notes: 'OpenCode Zen (opencode.ai/zen/v1) and local OpenCode server relay.',
+    },
+    {
+        id: 'openrouter',
+        label: 'OpenRouter (全球多模型聚合中转站)',
+        costTier: 'standard',
+        peakHoursUTC8: [],
+        quota: 'known',
+        notes: 'OpenRouter unified API relay for 300+ global and open-weights models.',
+    },
+    {
+        id: 'newapi',
+        label: 'NewAPI / OneAPI / VoAPI (通用中转站协议)',
+        costTier: 'budget',
+        peakHoursUTC8: [],
+        quota: 'known',
+        notes: 'Standard self-hosted or commercial OneAPI / NewAPI relay station.',
+    },
+    {
+        id: 'oneapi',
+        label: 'OneAPI (通用 API 中转站)',
+        costTier: 'budget',
+        peakHoursUTC8: [],
+        quota: 'known',
+        notes: 'OneAPI OpenAI-compatible relay station.',
+    },
+    {
+        id: 'aihubmix',
+        label: 'AiHubMix (国内全模型聚合中转)',
+        costTier: 'standard',
+        peakHoursUTC8: [],
+        quota: 'known',
+        notes: 'AiHubMix commercial multi-model relay station.',
+    },
+    {
+        id: 'openai',
+        label: 'OpenAI Official (官方直连)',
+        costTier: 'standard',
+        peakHoursUTC8: [],
+        quota: 'known',
+        notes: 'OpenAI official API platform.',
+    },
+    {
+        id: 'minimax',
+        label: 'MiniMax (稀宇科技大模型)',
+        costTier: 'budget',
+        peakHoursUTC8: [],
+        quota: 'known',
+        notes: 'MiniMax-M1 / Text-01 official OpenAI-compatible endpoint.',
+    },
+    {
         id: 'google',
         label: 'Google Gemini free tier',
         costTier: 'budget',
@@ -164,6 +228,15 @@ export const DEFAULT_DISPATCH_POLICY = {
         { provider: 'siliconflow', limit: 1000000, unit: 'requests', version: 'v1' },
         { provider: 'ollama', limit: 1000000, unit: 'requests', version: 'v1' },
         { provider: 'grok', limit: 1000000, unit: 'requests', version: 'v1' },
+        { provider: 'zcode', limit: 1000000, unit: 'requests', version: 'v1' },
+        { provider: 'opencode', limit: 1000000, unit: 'requests', version: 'v1' },
+        { provider: 'openrouter', limit: 1000000, unit: 'requests', version: 'v1' },
+        { provider: 'newapi', limit: 1000000, unit: 'requests', version: 'v1' },
+        { provider: 'oneapi', limit: 1000000, unit: 'requests', version: 'v1' },
+        { provider: 'aihubmix', limit: 1000000, unit: 'requests', version: 'v1' },
+        { provider: 'openai', limit: 1000000, unit: 'requests', version: 'v1' },
+        { provider: 'minimax', limit: 1000000, unit: 'requests', version: 'v1' },
+        { provider: 'custom-relay', limit: 1000000, unit: 'requests', version: 'v1' },
     ],
 };
 export function channelFamilyOf(provider, policy = DEFAULT_DISPATCH_POLICY) {
@@ -171,7 +244,19 @@ export function channelFamilyOf(provider, policy = DEFAULT_DISPATCH_POLICY) {
         return undefined;
     const family = provider.split('/', 1)[0] ?? provider;
     const catalog = policy.channelCatalog ?? CHANNEL_CATALOG;
-    return catalog.find(entry => entry.id === provider) ?? catalog.find(entry => entry.id === family);
+    const matched = catalog.find(entry => entry.id === provider) ?? catalog.find(entry => entry.id === family);
+    if (matched)
+        return matched;
+    if (/^(custom-|relay-)/iu.test(family)) {
+        return {
+            id: 'custom-relay',
+            label: `Custom Relay (${family})`,
+            costTier: 'standard',
+            peakHoursUTC8: [],
+            quota: 'known',
+        };
+    }
+    return undefined;
 }
 /** A local gateway is not free; this is an explicit owner no-approval policy exception. */
 export function isLocalBudgetExempt(family, approvalMode) {

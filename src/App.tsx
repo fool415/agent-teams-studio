@@ -30,6 +30,7 @@ import type {
 } from './client/dsh-shims.ts'
 import { zh, type AgentTeamsTranslate } from './client/locales.ts'
 import { MobileApprovalView } from './client/MobileApprovalView.tsx'
+import { ModelCatalogView } from './client/ModelCatalogView.tsx'
 import { OpsManualView } from './client/OpsManualView.tsx'
 import type {
   AgentTeamsLayoutNavigator,
@@ -329,9 +330,12 @@ const DEFAULT_SESSION_ID = 'antigravity-captain'
 
 export function App() {
   const t = useMemo(() => createTranslator(), [])
-  const [view, setView] = useState<'workspace' | 'video' | 'radar' | 'cpa-usage' | 'overview' | 'mobile' | 'knowledge'>(() => {
+  const [view, setView] = useState<
+    'workspace' | 'models' | 'video' | 'radar' | 'cpa-usage' | 'overview' | 'mobile' | 'knowledge'
+  >(() => {
     try {
       const sp = new URLSearchParams(window.location.search)
+      if (sp.get('view') === 'models' || window.location.hash === '#models') return 'models'
       if (sp.get('view') === 'video' || window.location.hash === '#video') return 'video'
       if (sp.get('view') === 'radar' || window.location.hash === '#radar') return 'radar'
       if (sp.get('view') === 'cpa-usage' || window.location.hash === '#cpa-usage') return 'cpa-usage'
@@ -598,7 +602,7 @@ export function App() {
   const workspaceState = useMemo(() => createWorkspaceState(), [])
   const workspaceSnapshot = useSyncExternalStore(workspaceState.subscribe, workspaceState.getSnapshot)
   const activitySnapshots = useSyncExternalStore(subscribeActivitySnapshots, getActivitySnapshotsSnapshot)
-  const { resolver: modelDirectories, runtime: modelsRuntime } = useStudioModelDirectory()
+  const { resolver: modelDirectories, runtime: modelsRuntime, reload: reloadModelsCatalog } = useStudioModelDirectory()
 
   const allTeams: readonly ActivityTeam[] = useMemo(() => {
     const seen = new Set<string>()
@@ -907,6 +911,14 @@ export function App() {
               onClick={() => setView('workspace')}
             >
               团队监控与审批
+            </button>
+            <button
+              type="button"
+              className="studio-tab"
+              data-active={view === 'models'}
+              onClick={() => setView('models')}
+            >
+              🤖 模型与供应商
             </button>
             <button
               type="button"
@@ -1274,6 +1286,18 @@ export function App() {
             state={workspaceState}
             modelDirectories={modelDirectories}
             openMember={openMember}
+          />
+        ) : view === 'models' ? (
+          <ModelCatalogView
+            teams={allTeams}
+            onQuickUseModel={(modelToken) => {
+              insertQuickToken(modelToken)
+              setQuickSuccess(`已填入模型标签 ${modelToken}，可在上方快捷栏输入目标回车一键建队！`)
+            }}
+            onModelsUpdated={() => {
+              void reloadModelsCatalog()
+            }}
+            onStatusMessage={(msg) => setQuickSuccess(msg)}
           />
         ) : view === 'video' ? (
           <VideoStudioView

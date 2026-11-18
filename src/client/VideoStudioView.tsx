@@ -141,6 +141,7 @@ export function VideoStudioView({ activeSessionId, onTeamLaunched }: VideoStudio
   })
   const [localGuide, setLocalGuide] = useState<LocalModelGuideItem[]>([])
   const [probeResult, setProbeResult] = useState<{ online?: boolean; message?: string } | null>(null)
+  const [hiddenPipeCount, setHiddenPipeCount] = useState<number>(0)
 
   const loadPipelines = useCallback(async (preferredId?: string) => {
     try {
@@ -149,6 +150,7 @@ export function VideoStudioView({ activeSessionId, onTeamLaunched }: VideoStudio
       const data = await res.json()
       const list: VideoPipelineSpec[] = data.pipelines ?? []
       setPipelines(list)
+      setHiddenPipeCount(Array.isArray(data.hiddenPipelineIds) ? data.hiddenPipelineIds.length : 0)
       if (data.localMediaConfig) setLocalConfig(data.localMediaConfig)
       if (Array.isArray(data.localModelsGuide)) setLocalGuide(data.localModelsGuide)
       if (Array.isArray(data.generatedGallery)) setGallery(data.generatedGallery)
@@ -361,6 +363,42 @@ export function VideoStudioView({ activeSessionId, onTeamLaunched }: VideoStudio
     } finally {
       setBusy(null)
     }
+  }
+
+  const handleDeletePipeline = async (id: string, isBuiltin?: boolean) => {
+    setBusy('delete-pipe')
+    try {
+      const res = await fetch(`/api/video/pipelines/${encodeURIComponent(id)}`, { method: 'DELETE' })
+      if (res.ok) {
+        await loadPipelines('')
+        setNotice({
+          kind: 'ok',
+          text: isBuiltin ? '🙈 已隐藏该内置流水线预设（可点击「恢复默认流水线」找回）' : '🗑️ 已删除该自定义流水线模板！',
+        })
+      }
+    } catch {}
+    setBusy(null)
+  }
+
+  const handleRestorePipelines = async () => {
+    try {
+      const res = await fetch('/api/video/pipelines/restore', { method: 'POST' })
+      if (res.ok) {
+        await loadPipelines()
+        setNotice({ kind: 'ok', text: '🔄 已恢复全部默认视频与图形流水线模板！' })
+      }
+    } catch {}
+  }
+
+  const handleDeleteGalleryImage = async (id: string) => {
+    try {
+      const res = await fetch(`/api/video/gallery/${encodeURIComponent(id)}`, { method: 'DELETE' })
+      if (res.ok) {
+        if (id === 'all') setGallery([])
+        else setGallery((prev) => prev.filter((g) => g.id !== id))
+        setNotice({ kind: 'ok', text: id === 'all' ? '🧹 已清空图形生成记录' : '🗑️ 已删除该图形资产' })
+      }
+    } catch {}
   }
 
   if (!draft) return null
@@ -782,9 +820,21 @@ export function VideoStudioView({ activeSessionId, onTeamLaunched }: VideoStudio
 
           {/* Right Column: Instant Graphic Asset Preview Gallery */}
           <section className="at-solid-glass-card" style={{ padding: 22 }}>
-            <h2 style={{ margin: '0 0 10px', fontSize: 19, fontWeight: 800 }}>
-              🖼️ 最近生成的图形视觉资产 ({gallery.length})
-            </h2>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+              <h2 style={{ margin: 0, fontSize: 19, fontWeight: 800 }}>
+                🖼️ 最近生成的图形视觉资产 ({gallery.length})
+              </h2>
+              {gallery.length > 0 && (
+                <button
+                  type="button"
+                  className="studio-btn"
+                  style={{ fontSize: 12.5, padding: '4px 10px', color: '#ef4444' }}
+                  onClick={() => void handleDeleteGalleryImage('all')}
+                >
+                  🧹 清空记录
+                </button>
+              )}
+            </div>
             {gallery.length === 0 ? (
               <div
                 style={{
@@ -800,7 +850,7 @@ export function VideoStudioView({ activeSessionId, onTeamLaunched }: VideoStudio
               </div>
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12, maxHeight: 320, overflowY: 'auto' }}>
-                {gallery.slice(0, 4).map((g) => (
+                {gallery.slice(0, 6).map((g) => (
                   <div
                     key={g.id}
                     style={{
@@ -818,11 +868,21 @@ export function VideoStudioView({ activeSessionId, onTeamLaunched }: VideoStudio
                     <div style={{ fontSize: 12.5, fontWeight: 700, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {g.prompt}
                     </div>
-                    <div style={{ fontSize: 11.5, color: 'var(--at-text-tertiary)', display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
+                    <div style={{ fontSize: 11.5, color: 'var(--at-text-tertiary)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
                       <span>{g.model} · {g.size}</span>
-                      <a href={g.imageUrl} download={`${g.id}.svg`} style={{ color: 'var(--at-accent-primary)', fontWeight: 700 }}>
-                        下载
-                      </a>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+                        <a href={g.imageUrl} download={`${g.id}.svg`} style={{ color: 'var(--at-accent-primary)', fontWeight: 700 }}>
+                          下载
+                        </a>
+                        <button
+                          type="button"
+                          style={{ border: 0, background: 'transparent', color: '#ef4444', cursor: 'pointer', fontWeight: 700 }}
+                          onClick={() => void handleDeleteGalleryImage(g.id)}
+                          title="删除该图片"
+                        >
+                          🗑️
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -849,6 +909,24 @@ export function VideoStudioView({ activeSessionId, onTeamLaunched }: VideoStudio
                 </p>
               </div>
               <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                {hiddenPipeCount > 0 && (
+                  <button
+                    type="button"
+                    className="studio-btn"
+                    onClick={() => void handleRestorePipelines()}
+                  >
+                    🔄 恢复默认流水线 ({hiddenPipeCount})
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="studio-btn"
+                  style={{ color: '#ef4444' }}
+                  disabled={busy !== null}
+                  onClick={() => void handleDeletePipeline(draft.id, draft.isBuiltin)}
+                >
+                  🗑️ {draft.isBuiltin ? '移除此预设' : '删除此模板'}
+                </button>
                 <button
                   type="button"
                   className="studio-btn"

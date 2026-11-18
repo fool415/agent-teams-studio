@@ -27,6 +27,7 @@ import {
 import { DEFAULT_CPA_API_KEY, DEFAULT_CPA_BASE_URL, DEFAULT_CPA_GPT_MODEL, runCpaChatCompletion } from './cpa-client.mjs'
 import { readDesktopConfig, recordUsageSnapshot } from './desktop-manager.mjs'
 import { buildCustomManualPrompt } from './extensions-store.mjs'
+import { getProviderRawConfig } from './model-providers-store.mjs'
 import { buildOpsPromptInjection } from './ops-knowledge.mjs'
 import { createSandboxTools } from './sandbox.mjs'
 import { ensureTaskWorktree, inspectWorktreeDiff } from './worktree.mjs'
@@ -526,19 +527,23 @@ export async function runNextReadyTask({
       const userPrompt = buildIsolatedTaskUserPrompt(team, task)
       const { config: desktopConfig } = readDesktopConfig({ workspaceRoot: absWorkspace, packageRoot: absWorkspace })
       const providerId = String(member.provider || 'cliproxyapi').toLowerCase()
-      const targetBaseUrl =
-        cpaBaseUrl && cpaBaseUrl !== DEFAULT_CPA_BASE_URL
+      const customProv = getProviderRawConfig(absWorkspace, providerId)
+      const useCustomDirect = Boolean(customProv?.baseUrl && (customProv?.apiKey || providerId === 'ollama'))
+      const targetBaseUrl = useCustomDirect
+        ? customProv.baseUrl
+        : cpaBaseUrl && cpaBaseUrl !== DEFAULT_CPA_BASE_URL
           ? cpaBaseUrl
           : providerId === 'codex'
             ? desktopConfig['codex-base-url'] || desktopConfig['cpa-base-url'] || cpaBaseUrl
             : providerId === 'antigravity'
               ? desktopConfig['antigravity-base-url'] || desktopConfig['cpa-base-url'] || cpaBaseUrl
               : desktopConfig['cpa-base-url'] || cpaBaseUrl
+      const targetApiKey = useCustomDirect ? (customProv.apiKey || cpaApiKey) : cpaApiKey
 
       const requestedEffort = member.reasoningEffort || member.reasoning_effort || ''
       const result = await runCpaChatCompletion({
         baseUrl: targetBaseUrl,
-        apiKey: cpaApiKey,
+        apiKey: targetApiKey,
         model: modelToUse,
         reasoningEffort: requestedEffort,
         messages: [

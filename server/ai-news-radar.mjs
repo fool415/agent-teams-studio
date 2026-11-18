@@ -185,17 +185,20 @@ const radarStorePath = (workspaceRoot) =>
 export function readRadarStore(workspaceRoot = process.cwd()) {
   const file = radarStorePath(workspaceRoot)
   if (!existsSync(file)) {
-    return { customItems: [], liveItems: [], lastFetchedAt: null }
+    return { customItems: [], liveItems: [], dismissedIds: [], lastFetchedAt: null }
   }
   try {
     const parsed = JSON.parse(readFileSync(file, 'utf8'))
     return {
       customItems: Array.isArray(parsed?.customItems) ? parsed.customItems : [],
       liveItems: Array.isArray(parsed?.liveItems) ? parsed.liveItems : [],
+      dismissedIds: Array.isArray(parsed?.dismissedIds)
+        ? parsed.dismissedIds.map((x) => String(x)).filter(Boolean)
+        : [],
       lastFetchedAt: parsed?.lastFetchedAt || null,
     }
   } catch {
-    return { customItems: [], liveItems: [], lastFetchedAt: null }
+    return { customItems: [], liveItems: [], dismissedIds: [], lastFetchedAt: null }
   }
 }
 
@@ -229,11 +232,12 @@ export function listAiRadarItems(
   { level = 'all', sourceType = 'all', query = '' } = {},
 ) {
   const store = readRadarStore(workspaceRoot)
+  const dismissedSet = new Set(store.dismissedIds || [])
   const seen = new Set()
   const merged = []
 
   for (const item of [...store.customItems, ...store.liveItems, ...CURATED_RADAR_ITEMS]) {
-    if (!item?.id || seen.has(item.id)) continue
+    if (!item?.id || seen.has(item.id) || dismissedSet.has(item.id)) continue
     seen.add(item.id)
     merged.push(item)
   }
@@ -254,6 +258,7 @@ export function listAiRadarItems(
   return {
     ok: true,
     lastFetchedAt: store.lastFetchedAt || new Date().toISOString(),
+    dismissedCount: (store.dismissedIds || []).length,
     counts: {
       total: merged.length,
       official: merged.filter((i) => i.sourceType === 'official').length,
@@ -314,13 +319,25 @@ export function deleteCustomRadarItem(workspaceRoot = process.cwd(), id = '') {
   const nextCustom = store.customItems.filter((x) => x.id !== id)
   const nextLive = store.liveItems.filter((x) => x.id !== id)
   if (
-    nextCustom.length === store.customItems.length &&
-    nextLive.length === store.liveItems.length
+    nextCustom.length !== store.customItems.length ||
+    nextLive.length !== store.liveItems.length
   ) {
-    return false
+    writeRadarStore(workspaceRoot, { ...store, customItems: nextCustom, liveItems: nextLive })
+    return true
   }
-  writeRadarStore(workspaceRoot, { ...store, customItems: nextCustom, liveItems: nextLive })
-  return true
+  if (CURATED_RADAR_ITEMS.some((x) => x.id === id)) {
+    const dismissed = new Set(store.dismissedIds || [])
+    dismissed.add(id)
+    writeRadarStore(workspaceRoot, { ...store, dismissedIds: [...dismissed] })
+    return true
+  }
+  return false
+}
+
+export function restoreRadarItems(workspaceRoot = process.cwd()) {
+  const store = readRadarStore(workspaceRoot)
+  writeRadarStore(workspaceRoot, { ...store, dismissedIds: [] })
+  return listAiRadarItems(workspaceRoot)
 }
 
 /**

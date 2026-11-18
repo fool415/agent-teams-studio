@@ -107,6 +107,7 @@ export const AiNewsRadarView: React.FC<{
   const [showGrokConfig, setShowGrokConfig] = useState(false)
   const [xaiApiKey, setXaiApiKey] = useState('')
   const [xaiModel, setXaiModel] = useState('grok-3')
+  const [dismissedCount, setDismissedCount] = useState(0)
 
   const loadRadar = useCallback(async () => {
     try {
@@ -120,6 +121,7 @@ export const AiNewsRadarView: React.FC<{
         const data = await res.json()
         setItems(Array.isArray(data.items) ? data.items : [])
         if (data.counts) setCounts(data.counts)
+        setDismissedCount(Number(data.dismissedCount || 0))
       }
     } catch {}
   }, [levelFilter, sourceFilter, searchQuery])
@@ -252,6 +254,46 @@ export const AiNewsRadarView: React.FC<{
     } catch {}
   }
 
+  const handleDeleteRadarItem = async (id: string) => {
+    try {
+      const res = await fetch(`/api/radar/items/${encodeURIComponent(id)}`, { method: 'DELETE' })
+      if (res.ok) {
+        await loadRadar()
+        onStatusMessage?.('🗑️ 已移除该情报条目')
+      }
+    } catch {}
+  }
+
+  const handleRestoreRadar = async () => {
+    try {
+      const res = await fetch('/api/radar/restore', { method: 'POST' })
+      if (res.ok) {
+        await loadRadar()
+        onStatusMessage?.('🔄 已恢复全部内置精选情报！')
+      }
+    } catch {}
+  }
+
+  const handleDeleteGrokItem = async (id: string) => {
+    try {
+      const res = await fetch(`/api/grok/history/${encodeURIComponent(id)}`, { method: 'DELETE' })
+      if (res.ok) {
+        const data = await res.json()
+        setGrokHistory(Array.isArray(data.history) ? data.history : [])
+      }
+    } catch {}
+  }
+
+  const handleClearGrokHistory = async () => {
+    try {
+      const res = await fetch('/api/grok/clear', { method: 'POST' })
+      if (res.ok) {
+        setGrokHistory([])
+        onStatusMessage?.('🧹 已清空 @Grok 历史记录')
+      }
+    } catch {}
+  }
+
   return (
     <div className="at-fullscreen-module-shell">
       {/* Top 3-Tier Overview Bento Strip */}
@@ -310,6 +352,15 @@ export const AiNewsRadarView: React.FC<{
               </p>
             </div>
             <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+              {dismissedCount > 0 && (
+                <button
+                  type="button"
+                  className="studio-btn"
+                  onClick={() => void handleRestoreRadar()}
+                >
+                  🔄 恢复已移除情报 ({dismissedCount})
+                </button>
+              )}
               <button
                 type="button"
                 className="studio-btn"
@@ -518,6 +569,15 @@ export const AiNewsRadarView: React.FC<{
                       <button
                         type="button"
                         className="studio-btn"
+                        style={{ color: '#ef4444', padding: '5px 10px' }}
+                        title="删除或移除此条情报"
+                        onClick={() => void handleDeleteRadarItem(item.id)}
+                      >
+                        🗑️
+                      </button>
+                      <button
+                        type="button"
+                        className="studio-btn"
                         onClick={() =>
                           void handleAskGrok(`请对这条情报进行事实核查与价值拆解：《${item.title}》 — ${item.summary}`, 'fact-check')
                         }
@@ -554,13 +614,25 @@ export const AiNewsRadarView: React.FC<{
                 融合开源 <code>xai-org/grok-build</code> 与 X 平台 <code>@grok</code> 求真核查 / 毒舌红队
               </div>
             </div>
-            <button
-              type="button"
-              className="studio-btn"
-              onClick={() => setShowGrokConfig((v) => !v)}
-            >
-              ⚙️ 渠道配置
-            </button>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {grokHistory.length > 0 && (
+                <button
+                  type="button"
+                  className="studio-btn"
+                  style={{ color: '#ef4444' }}
+                  onClick={() => void handleClearGrokHistory()}
+                >
+                  🧹 清空
+                </button>
+              )}
+              <button
+                type="button"
+                className="studio-btn"
+                onClick={() => setShowGrokConfig((v) => !v)}
+              >
+                ⚙️ 渠道配置
+              </button>
+            </div>
           </div>
 
           {showGrokConfig && (
@@ -676,11 +748,21 @@ export const AiNewsRadarView: React.FC<{
                     border: '1px solid var(--at-glass-border)',
                   }}
                 >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--at-text-tertiary)', marginBottom: 6 }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 12, color: 'var(--at-text-tertiary)', marginBottom: 6 }}>
                     <span>
                       <strong>@{h.mode}</strong> · 路由: {h.routeUsed} ({h.modelUsed})
                     </span>
-                    <span>{h.createdAt.slice(11, 19)}</span>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                      <span>{h.createdAt.slice(11, 19)}</span>
+                      <button
+                        type="button"
+                        style={{ border: 0, background: 'transparent', color: '#ef4444', cursor: 'pointer', fontWeight: 700 }}
+                        title="删除此条记录"
+                        onClick={() => void handleDeleteGrokItem(h.id)}
+                      >
+                        ✕
+                      </button>
+                    </span>
                   </div>
                   <div style={{ fontWeight: 700, fontSize: 13.5, marginBottom: 8, color: 'var(--at-accent-primary)' }}>
                     Q: {h.query}

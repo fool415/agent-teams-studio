@@ -16,6 +16,7 @@ import {
   deleteCustomRadarItem,
   listRadarItems,
   refreshLiveRadarItems,
+  restoreRadarItems,
   saveCustomRadarItem,
 } from './ai-news-radar.mjs'
 import { resolveTeamProfile } from './core/profiles.js'
@@ -39,6 +40,7 @@ import {
 import {
   askGrokBot,
   clearGrokBotHistory,
+  deleteGrokHistoryItem,
   getGrokBotStatus,
   updateGrokBotConfig,
 } from '../channels/grokbot/grok-bot-service.mjs'
@@ -70,18 +72,32 @@ import {
   deleteCustomManual,
   deleteCustomWidget,
   listCustomExtensions,
+  restoreHiddenManuals,
   saveCustomManual,
   saveCustomWidget,
 } from './extensions-store.mjs'
 import { getKnowledgeManual, listKnowledgeManuals } from './ops-knowledge.mjs'
+import {
+  PROVIDER_META,
+  deleteCustomProvider,
+  deleteModelFromProvider,
+  discoverProviderModels,
+  getProviderRawConfig,
+  listCustomProviders,
+  pingModelEndpoint,
+  restoreHiddenProviders,
+  saveCustomProvider,
+} from './model-providers-store.mjs'
 import { assembleStudioSnapshot, collectStudioTeams } from './snapshot.mjs'
 import {
   BUILTIN_VIDEO_PIPELINES,
   buildVideoTeamFromPipeline,
   deleteCustomVideoPipeline,
+  deleteGeneratedGraphic,
   generateStudioGraphic,
   listVideoPipelines,
   probeLocalMediaEndpoint,
+  restoreBuiltinVideoPipelines,
   saveCustomVideoPipeline,
   saveLocalMediaConfig,
 } from './video-pipeline.mjs'
@@ -176,6 +192,42 @@ const STATIC_CATALOG = {
   grok: [
     { id: 'grok-3', name: 'Grok-3 (xAI Grok Bot / grok-build 旗舰)' },
     { id: 'grok-3-mini-fast', name: 'Grok-3 Mini Fast (xAI 极速核查)' },
+  ],
+  zcode: [
+    { id: 'glm-4.5', name: 'ZCode · GLM-4.5 (Coding Plan 主力)' },
+    { id: 'glm-4.5-air', name: 'ZCode · GLM-4.5-Air (高速编码)' },
+    { id: 'zcode-coder', name: 'ZCode Coder (智谱编码代理专属)' },
+  ],
+  opencode: [
+    { id: 'claude-sonnet-4-6', name: 'OpenCode Zen · Claude Sonnet 4.6' },
+    { id: 'gpt-5', name: 'OpenCode Zen · GPT-5' },
+    { id: 'qwen3-coder', name: 'OpenCode Zen · Qwen3-Coder' },
+  ],
+  newapi: [
+    { id: 'gpt-4o', name: 'NewAPI / OneAPI · GPT-4o (可一键拉取全站模型)' },
+    { id: 'claude-3-7-sonnet-20250219', name: 'NewAPI / OneAPI · Claude 3.7 Sonnet' },
+    { id: 'deepseek-r1', name: 'NewAPI / OneAPI · DeepSeek-R1' },
+    { id: 'gemini-2.5-pro', name: 'NewAPI / OneAPI · Gemini 2.5 Pro' },
+  ],
+  openrouter: [
+    { id: 'anthropic/claude-sonnet-4', name: 'OpenRouter · Claude Sonnet 4' },
+    { id: 'openai/gpt-4.1', name: 'OpenRouter · GPT-4.1' },
+    { id: 'google/gemini-2.5-pro', name: 'OpenRouter · Gemini 2.5 Pro' },
+    { id: 'deepseek/deepseek-r1', name: 'OpenRouter · DeepSeek-R1' },
+  ],
+  aihubmix: [
+    { id: 'claude-3-7-sonnet-latest', name: 'AiHubMix · Claude 3.7 Sonnet' },
+    { id: 'gpt-4o', name: 'AiHubMix · GPT-4o' },
+    { id: 'gemini-2.5-pro', name: 'AiHubMix · Gemini 2.5 Pro' },
+  ],
+  openai: [
+    { id: 'gpt-4.1', name: 'OpenAI Official · GPT-4.1' },
+    { id: 'gpt-4o', name: 'OpenAI Official · GPT-4o' },
+    { id: 'o3-mini', name: 'OpenAI Official · o3-mini' },
+  ],
+  minimax: [
+    { id: 'MiniMax-M1', name: 'MiniMax-M1 (稀宇百万上下文推理)' },
+    { id: 'MiniMax-Text-01', name: 'MiniMax-Text-01 (超长上下文)' },
   ],
   ollama: [
     { id: 'qwen2.5-coder:32b', name: 'Local Ollama · Qwen2.5-Coder 32B' },
@@ -1452,8 +1504,11 @@ export function createStudioServer({
 
       // Built-in + User Extensible Knowledge Base, Runbook Manuals & Custom Widgets
       if (pathname === '/api/knowledge' && req.method === 'GET') {
-        const builtin = listKnowledgeManuals().map((m) => ({ ...m, isCustom: false }))
-        const { manuals: customManuals, widgets } = listCustomExtensions(absWorkspace)
+        const { manuals: customManuals, widgets, hiddenManualIds = [] } = listCustomExtensions(absWorkspace)
+        const hiddenSet = new Set(hiddenManualIds)
+        const builtin = listKnowledgeManuals()
+          .filter((m) => !hiddenSet.has(m.id))
+          .map((m) => ({ ...m, isCustom: false }))
         const customSummaries = customManuals.map((m) => ({
           id: m.id,
           title: m.title,
@@ -1472,7 +1527,13 @@ export function createStudioServer({
           manuals: [...builtin, ...customSummaries],
           customManuals,
           widgets,
+          hiddenManualCount: hiddenManualIds.length,
         })
+      }
+
+      if (pathname === '/api/knowledge/restore' && req.method === 'POST') {
+        restoreHiddenManuals(absWorkspace)
+        return sendJson(res, 200, { ok: true, restored: true })
       }
 
       if (pathname === '/api/knowledge' && req.method === 'POST') {
@@ -1530,11 +1591,22 @@ export function createStudioServer({
         return sendJson(res, 200, { ok: true, pipeline: saved })
       }
 
+      if (pathname === '/api/video/pipelines/restore' && req.method === 'POST') {
+        const data = restoreBuiltinVideoPipelines(absWorkspace)
+        return sendJson(res, 200, { ok: true, restored: true, ...data })
+      }
+
       if (pathname.startsWith('/api/video/pipelines/') && req.method === 'DELETE') {
         const pipeId = decodeURIComponent(pathname.slice('/api/video/pipelines/'.length))
         const deleted = deleteCustomVideoPipeline(absWorkspace, pipeId)
-        if (!deleted) throw new HttpFailure(404, `未找到可删除的自定义视频流水线: ${pipeId}`)
+        if (!deleted) throw new HttpFailure(404, `未找到可删除的流水线: ${pipeId}`)
         return sendJson(res, 200, { ok: true, deleted: true, id: pipeId })
+      }
+
+      if (pathname.startsWith('/api/video/gallery/') && req.method === 'DELETE') {
+        const imgId = decodeURIComponent(pathname.slice('/api/video/gallery/'.length))
+        deleteGeneratedGraphic(absWorkspace, imgId)
+        return sendJson(res, 200, { ok: true, deleted: true, id: imgId })
       }
 
       if (pathname === '/api/video/launch' && req.method === 'POST') {
@@ -1611,10 +1683,15 @@ export function createStudioServer({
         return sendJson(res, 200, { ok: true, item })
       }
 
+      if (pathname === '/api/radar/restore' && req.method === 'POST') {
+        const data = restoreRadarItems(absWorkspace)
+        return sendJson(res, 200, { ok: true, restored: true, ...data })
+      }
+
       if (pathname.startsWith('/api/radar/items/') && req.method === 'DELETE') {
         const itemId = decodeURIComponent(pathname.slice('/api/radar/items/'.length))
         const deleted = deleteCustomRadarItem(absWorkspace, itemId)
-        if (!deleted) throw new HttpFailure(404, `未找到可删除的自定义情报条目: ${itemId}`)
+        if (!deleted) throw new HttpFailure(404, `未找到可移除的情报条目: ${itemId}`)
         return sendJson(res, 200, { ok: true, deleted: true, id: itemId })
       }
 
@@ -1663,6 +1740,12 @@ export function createStudioServer({
 
       if (pathname === '/api/grok/clear' && req.method === 'POST') {
         return sendJson(res, 200, clearGrokBotHistory(absWorkspace))
+      }
+
+      if (pathname.startsWith('/api/grok/history/') && req.method === 'DELETE') {
+        const hid = decodeURIComponent(pathname.slice('/api/grok/history/'.length))
+        deleteGrokHistoryItem(absWorkspace, hid)
+        return sendJson(res, 200, getGrokBotStatus(absWorkspace))
       }
 
       // Git Version Checkpoint & Rollback Helper Routes (/api/git/checkpoints)
@@ -1845,34 +1928,216 @@ export function createStudioServer({
         })
       }
 
-      // Runtime Model Directory (CPA + Fallbacks + Domestic & Grok Channels)
+      // Runtime Model & Provider Directory (CPA + Antigravity + Domestic + Grok + Custom Providers)
       if (pathname === '/api/models' && req.method === 'GET') {
         const cpa = await fetchCpaModels({ baseUrl: cpaBaseUrl, apiKey: cpaApiKey })
+        const { config: deskCfg } = readDesktopConfig({ workspaceRoot: absWorkspace, packageRoot })
+        const customProviders = listCustomProviders(absWorkspace)
+        const customById = new Map(customProviders.map((cp) => [cp.id, cp]))
+
+        const liveCpaIds = new Set(cpa.models.map((m) => m.id))
         const mergedCpa = [...STATIC_CATALOG.cliproxyapi]
         for (const liveModel of cpa.models) {
           if (!mergedCpa.some((m) => m.id === liveModel.id)) {
-            mergedCpa.push({ id: liveModel.id, name: liveModel.id })
+            mergedCpa.push({
+              id: liveModel.id,
+              name: liveModel.id,
+              ownedBy: liveModel.ownedBy || 'cliproxyapi',
+              isLiveDiscovered: true,
+            })
           }
         }
+
+        const hiddenProvidersCount = customProviders.filter((cp) => cp.hidden).length
+        const baseProviders = [
+          // 1. 核心 Agent 宿主生态 (反重力 / Codex / DSH / ZCode / OpenCode)
+          { id: 'antigravity', name: 'Google Antigravity (反重力 · 哈吉米)', models: STATIC_CATALOG.antigravity },
+          { id: 'codex', name: 'OpenAI Codex (API / 本地 CLI)', models: STATIC_CATALOG.codex },
+          { id: 'dsh', name: 'DSH AgentTeams (原生兼容生态)', models: STATIC_CATALOG.dsh },
+          { id: 'zcode', name: 'ZCode (ZCode IDE / 智谱编码代理)', models: STATIC_CATALOG.zcode },
+          { id: 'opencode', name: 'OpenCode (OpenCode Zen / 开源终端路由)', models: STATIC_CATALOG.opencode },
+          // 2. 主流中转站与聚合网关 (CPA / NewAPI / OpenRouter / AiHubMix / 硅基流动)
+          { id: 'cliproxyapi', name: 'EasyCLIProxyAPI (CPA 本地总中转)', models: mergedCpa },
+          { id: 'newapi', name: 'NewAPI / OneAPI / VoAPI (通用中转站)', models: STATIC_CATALOG.newapi },
+          { id: 'openrouter', name: 'OpenRouter (全球模型聚合中转)', models: STATIC_CATALOG.openrouter },
+          { id: 'aihubmix', name: 'AiHubMix (国内全模型商业中转)', models: STATIC_CATALOG.aihubmix },
+          { id: 'siliconflow', name: 'SiliconFlow (硅基流动国内聚合)', models: STATIC_CATALOG.siliconflow },
+          // 3. 国内外主流官方大模型平台
+          { id: 'openai', name: 'OpenAI Official (官方直连)', models: STATIC_CATALOG.openai },
+          { id: 'anthropic', name: 'Anthropic Claude (官方协议)', models: STATIC_CATALOG.anthropic },
+          { id: 'deepseek', name: 'DeepSeek (深度求索官方)', models: STATIC_CATALOG.deepseek },
+          { id: 'grok', name: 'xAI Grok (官方 / grok-build)', models: STATIC_CATALOG.grok },
+          { id: 'qwen', name: 'Alibaba Qwen (阿里通义百炼)', models: STATIC_CATALOG.qwen },
+          { id: 'zhipu', name: 'Zhipu GLM (智谱清言 BigModel)', models: STATIC_CATALOG.zhipu },
+          { id: 'kimi', name: 'Moonshot Kimi (月之暗面 K2)', models: STATIC_CATALOG.kimi },
+          { id: 'doubao', name: 'ByteDance Doubao (字节火山方舟)', models: STATIC_CATALOG.doubao },
+          { id: 'minimax', name: 'MiniMax (稀宇科技开放平台)', models: STATIC_CATALOG.minimax },
+          // 4. 本地私有部署
+          { id: 'ollama', name: 'Ollama / vLLM (本地私有部署)', models: STATIC_CATALOG.ollama },
+        ]
+          .filter((bp) => !customById.get(bp.id)?.hidden)
+          .map((bp) => {
+            const metaInfo = PROVIDER_META[bp.id] || {}
+            const override = customById.get(bp.id)
+            const removedSet = new Set(override?.removedModelIds || [])
+            const modelMap = new Map()
+            for (const m of bp.models) {
+              if (removedSet.has(m.id)) continue
+              modelMap.set(m.id, {
+                ...m,
+                isLiveDiscovered: Boolean(m.isLiveDiscovered || (bp.id === 'cliproxyapi' && liveCpaIds.has(m.id))),
+              })
+            }
+            if (override?.models) {
+              for (const cm of override.models) {
+                if (removedSet.has(cm.id)) continue
+                modelMap.set(cm.id, { ...cm, isCustom: true })
+              }
+            }
+            const isCpaBacked = ['cliproxyapi', 'antigravity', 'codex', 'dsh'].includes(bp.id)
+            return {
+              id: bp.id,
+              name: override?.name || bp.name,
+              icon: override?.icon || metaInfo.icon || '🔌',
+              category: override?.category || metaInfo.category || 'official-cloud',
+              region: override?.region || metaInfo.region || 'global',
+              protocol: override?.protocol || metaInfo.protocol || 'openai',
+              baseUrl:
+                override?.baseUrl ||
+                (bp.id === 'cliproxyapi' ? cpa.baseUrl : metaInfo.defaultBaseUrl || cpa.baseUrl),
+              website: override?.website || metaInfo.website || '',
+              badge: override?.badge || metaInfo.badge || '内置供应商',
+              description: override?.description || metaInfo.description || '',
+              isCustom: false,
+              hasApiKey: Boolean(override?.hasApiKey || isCpaBacked),
+              apiKeyMasked: override?.apiKeyMasked || (isCpaBacked ? 'CPA 统一托管' : ''),
+              status:
+                bp.id === 'cliproxyapi'
+                  ? cpa.online
+                    ? 'online'
+                    : 'offline'
+                  : isCpaBacked && cpa.online
+                    ? 'online'
+                    : override?.hasApiKey
+                      ? 'configured'
+                      : 'gateway-fallback',
+              models: [...modelMap.values()],
+            }
+          })
+
+        const extraCustomProviders = customProviders
+          .filter((cp) => !Object.hasOwn(PROVIDER_META, cp.id) && !cp.hidden)
+          .map((cp) => ({
+            ...cp,
+            category: cp.category || 'relay-station',
+            isCustom: true,
+            status: cp.hasApiKey ? 'configured' : 'gateway-fallback',
+          }))
+
+        const allProviders = [...baseProviders, ...extraCustomProviders]
+        const totalModelsCount = allProviders.reduce((acc, p) => acc + p.models.length, 0)
+
         return sendJson(res, 200, {
+          ok: true,
           cpaOnline: cpa.online,
           cpaBaseUrl: cpa.baseUrl,
-          defaultGptModel: DEFAULT_CPA_GPT_MODEL,
+          liveCpaCount: cpa.models.length,
+          defaultGptModel: String(deskCfg['default-gpt-model'] || DEFAULT_CPA_GPT_MODEL),
+          totalProvidersCount: allProviders.length,
+          totalModelsCount,
+          hiddenProvidersCount,
           error: cpa.error,
-          providers: [
-            { id: 'cliproxyapi', name: 'EasyCLIProxyAPI (CPA 统一渠道)', models: mergedCpa },
-            { id: 'antigravity', name: 'Google Antigravity (Gemini · 哈吉米)', models: STATIC_CATALOG.antigravity },
-            { id: 'codex', name: 'OpenAI Codex (API / 本地 CLI)', models: STATIC_CATALOG.codex },
-            { id: 'dsh', name: 'DSH AgentTeams (原生兼容)', models: STATIC_CATALOG.dsh },
-            { id: 'deepseek', name: 'DeepSeek (深度求索 / DeepSeek Harness)', models: STATIC_CATALOG.deepseek },
-            { id: 'grok', name: 'xAI Grok / Grok-Build (实时深搜与核查)', models: STATIC_CATALOG.grok },
-            { id: 'qwen', name: 'Alibaba Qwen (阿里通义千问 / 百炼)', models: STATIC_CATALOG.qwen },
-            { id: 'zhipu', name: 'Zhipu GLM (智谱清言 BigModel)', models: STATIC_CATALOG.zhipu },
-            { id: 'kimi', name: 'Moonshot Kimi (月之暗面 K2)', models: STATIC_CATALOG.kimi },
-            { id: 'doubao', name: 'ByteDance Doubao (字节豆包 / 火山方舟)', models: STATIC_CATALOG.doubao },
-            { id: 'siliconflow', name: 'SiliconFlow (硅基流动国内聚合)', models: STATIC_CATALOG.siliconflow },
-            { id: 'ollama', name: 'Ollama / 本地大模型', models: STATIC_CATALOG.ollama },
-          ],
+          providers: allProviders,
+        })
+      }
+
+      if (pathname === '/api/models/providers' && req.method === 'POST') {
+        const body = await readJsonBody(req)
+        const saved = saveCustomProvider(absWorkspace, body)
+        return sendJson(res, 200, { ok: true, provider: saved })
+      }
+
+      if (pathname === '/api/models/providers/restore' && req.method === 'POST') {
+        restoreHiddenProviders(absWorkspace)
+        return sendJson(res, 200, { ok: true, restored: true })
+      }
+
+      if (pathname === '/api/models/providers/discover' && req.method === 'POST') {
+        const body = await readJsonBody(req)
+        const providerId = String(body?.providerId || '').trim().toLowerCase()
+        const savedRaw = providerId ? getProviderRawConfig(absWorkspace, providerId) : null
+        const targetBaseUrl = String(body?.baseUrl || savedRaw?.baseUrl || cpaBaseUrl).trim()
+        const targetApiKey =
+          body?.apiKey && body.apiKey !== 'KEEP_EXISTING'
+            ? String(body.apiKey).trim()
+            : (savedRaw?.apiKey || (targetBaseUrl === cpaBaseUrl ? cpaApiKey : ''))
+        const result = await discoverProviderModels({
+          baseUrl: targetBaseUrl,
+          apiKey: targetApiKey,
+          timeoutMs: Number(body?.timeoutMs) || 7000,
+        })
+        if (result.reachable && result.models.length > 0 && body?.autoSave && providerId) {
+          saveCustomProvider(absWorkspace, {
+            id: providerId,
+            name: body?.name,
+            baseUrl: targetBaseUrl,
+            apiKey: body?.apiKey ? body.apiKey : 'KEEP_EXISTING',
+            models: result.models,
+          })
+        }
+        return sendJson(res, 200, result)
+      }
+
+      const delProvModelMatch = pathname.match(/^\/api\/models\/providers\/([^/]+)\/models\/(.+)$/u)
+      if (delProvModelMatch && req.method === 'DELETE') {
+        const provId = decodeURIComponent(delProvModelMatch[1])
+        const modId = decodeURIComponent(delProvModelMatch[2])
+        const deleted = deleteModelFromProvider(absWorkspace, provId, modId)
+        if (!deleted) throw new HttpFailure(404, `未找到模型: ${provId}/${modId}`)
+        return sendJson(res, 200, { ok: true, deleted: true, providerId: provId, modelId: modId })
+      }
+
+      if (pathname.startsWith('/api/models/providers/') && req.method === 'DELETE') {
+        const provId = decodeURIComponent(pathname.slice('/api/models/providers/'.length))
+        const deleted = deleteCustomProvider(absWorkspace, provId)
+        if (!deleted) throw new HttpFailure(404, `未找到可删除的供应商配置: ${provId}`)
+        return sendJson(res, 200, { ok: true, deleted: true, id: provId })
+      }
+
+      if (pathname === '/api/models/test' && req.method === 'POST') {
+        const body = await readJsonBody(req)
+        const providerId = String(body?.provider || 'cliproxyapi').trim()
+        const modelId = String(body?.model || DEFAULT_CPA_GPT_MODEL).trim()
+        const timeoutMs = Number(body?.timeoutMs) > 0 ? Number(body.timeoutMs) : 6000
+
+        if (typeof mockExecutor === 'function') {
+          return sendJson(res, 200, {
+            ok: true,
+            reachable: true,
+            latencyMs: 12,
+            reply: 'OK (mock)',
+            provider: providerId,
+            model: modelId,
+            routeUsed: 'mock-executor',
+          })
+        }
+
+        const customRaw = getProviderRawConfig(absWorkspace, providerId)
+        const useDirect = Boolean(customRaw?.baseUrl && (customRaw?.apiKey || providerId === 'ollama'))
+        const targetBaseUrl = useDirect ? customRaw.baseUrl : cpaBaseUrl
+        const targetApiKey = useDirect ? customRaw.apiKey : cpaApiKey
+
+        const ping = await pingModelEndpoint({
+          baseUrl: targetBaseUrl,
+          apiKey: targetApiKey,
+          model: modelId,
+          timeoutMs,
+        })
+        return sendJson(res, 200, {
+          ...ping,
+          provider: providerId,
+          model: modelId,
+          routeUsed: useDirect ? `direct (${targetBaseUrl})` : `cpa-gateway (${cpaBaseUrl})`,
         })
       }
 
@@ -2091,17 +2356,27 @@ export function createStudioServer({
       // DSH Provider Catalog
       if (pathname === '/plugins/dsh-agent-teams/teams/catalog' && req.method === 'GET') {
         const provider = (parsedUrl.searchParams.get('provider') || 'cliproxyapi').trim().toLowerCase()
+        const customCfg = getProviderRawConfig(absWorkspace, provider)
+        const removedSet = new Set(customCfg?.removedModelIds || [])
+        const customModels = Array.isArray(customCfg?.models) ? customCfg.models : []
+
         if (provider === 'cliproxyapi' || provider === 'codex') {
           const cpa = await fetchCpaModels({ baseUrl: cpaBaseUrl, apiKey: cpaApiKey })
-          const base = STATIC_CATALOG[provider] ?? STATIC_CATALOG.cliproxyapi
+          const base = (STATIC_CATALOG[provider] ?? STATIC_CATALOG.cliproxyapi).filter((m) => !removedSet.has(m.id))
           const seen = new Set(base.map((m) => m.id))
           const combined = [
             ...base,
-            ...cpa.models.filter((m) => !seen.has(m.id)).map((m) => ({ id: m.id, name: m.id })),
+            ...customModels.filter((m) => !seen.has(m.id) && !removedSet.has(m.id)),
+            ...cpa.models
+              .filter((m) => !seen.has(m.id) && !removedSet.has(m.id))
+              .map((m) => ({ id: m.id, name: m.id })),
           ]
           return sendJson(res, 200, { models: combined, advisory: !cpa.online })
         }
-        return sendJson(res, 200, { models: STATIC_CATALOG[provider] ?? [], advisory: false })
+        const base = (STATIC_CATALOG[provider] ?? []).filter((m) => !removedSet.has(m.id))
+        const seen = new Set(base.map((m) => m.id))
+        const merged = [...base, ...customModels.filter((m) => !seen.has(m.id) && !removedSet.has(m.id))]
+        return sendJson(res, 200, { models: merged, advisory: false })
       }
 
       // DSH Teams REST: List / Create (ALWAYS STAGED!)
